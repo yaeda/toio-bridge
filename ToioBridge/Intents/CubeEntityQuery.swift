@@ -16,12 +16,4 @@ struct CubeEntityQuery: EntityQuery {
                 .map(CubeEntity.init(snapshot:))
         }
     }
-
-    func defaultResult() async -> CubeEntity? {
-        await MainActor.run {
-            CubeManager.shared.connectedCubeSnapshots()
-                .first
-                .map(CubeEntity.init(snapshot:))
-        }
-    }
 }

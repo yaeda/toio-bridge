@@ -5,6 +5,8 @@ struct SetLampIntent: AppIntent {
     static var title: LocalizedStringResource = "Set toio Lamp"
     static var description = IntentDescription("Set the lamp color on a connected toio Core Cube.")
     static var openAppWhenRun = true
+    @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
+    static var supportedModes: IntentModes { .foreground(.dynamic) }
 
     @Parameter(title: "Cube")
     var cube: CubeEntity?
@@ -21,6 +23,7 @@ struct SetLampIntent: AppIntent {
     @Parameter(title: "Duration milliseconds", default: 1000)
     var durationMilliseconds: Int
 
+    @MainActor
     func perform() async throws -> some IntentResult {
         do {
             try await CubeManager.shared.setLamp(
