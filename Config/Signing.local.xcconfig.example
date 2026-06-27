@@ -1,0 +1,9 @@
+// Copy this file to Signing.local.xcconfig and set values for your local machine.
+// Do not commit Signing.local.xcconfig.
+
+CODE_SIGN_STYLE = Manual
+DEVELOPMENT_TEAM = YOURTEAMID
+CODE_SIGN_IDENTITY = Apple Development
+
+// Leave this blank unless Xcode requires a specific manual provisioning profile.
+PROVISIONING_PROFILE_SPECIFIER =

@@ -3,5 +3,13 @@ xcuserdata/
 *.xcuserstate
 
 # Build products
+.build/
 DerivedData/
 build/
+
+# Local signing configuration and secrets
+Config/Signing.local.xcconfig
+*.p12
+*.provisionprofile
+*.mobileprovision
+AuthKey_*.p8
