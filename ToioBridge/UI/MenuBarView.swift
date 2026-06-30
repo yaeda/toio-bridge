@@ -44,12 +44,15 @@ struct MenuBarView: View {
                         }
                     }
                 } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(manager.discoveredCubes) { cube in
-                            MenuBarCubeRow(cube: cube, runCommand: runCommand)
-                                .environmentObject(manager)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(manager.discoveredCubes) { cube in
+                                MenuBarCubeRow(cube: cube, runCommand: runCommand)
+                                    .environmentObject(manager)
+                            }
                         }
                     }
+                    .frame(maxHeight: 280)
                 }
             }
 
