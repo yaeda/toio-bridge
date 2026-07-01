@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": false,
+  "draft": true,
+  "force-tag-creation": true,
+  "pull-request-title-pattern": "chore: release ${version}",
+  "packages": {
+    ".": {
+      "package-name": "ToioBridge",
+      "release-type": "simple",
+      "initial-version": "1.0.0",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "ToioBridge.xcodeproj/project.pbxproj"
+        }
+      ]
+    }
+  }
+}
