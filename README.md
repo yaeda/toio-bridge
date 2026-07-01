@@ -55,6 +55,31 @@ xcodebuild \
 
 Never commit signing secrets such as `.p12` files, provisioning profiles, App Store Connect API keys, or `AuthKey_*.p8` files.
 
+## Releases
+
+Releases are managed by Release Please. Conventional Commit messages merged into
+`main` update the release PR. The bootstrap version in the repository is
+`0.0.0`; the first Release Please PR proposes `v1.0.0`. Merging a release PR
+updates `version.txt`, `CHANGELOG.md`, and the Xcode marketing/build versions,
+then creates a `v*` git tag and a draft GitHub Release. The release workflow
+builds a signed, notarized `ToioBridge-v*.dmg`, uploads it to that GitHub
+Release, and publishes the release after the asset is attached.
+
+Configure these repository secrets before merging the first release PR:
+
+- `APPLE_TEAM_ID`
+- `DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64`
+- `DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD`
+- `KEYCHAIN_PASSWORD`
+- `APP_STORE_CONNECT_API_KEY_ID`
+- `APP_STORE_CONNECT_API_ISSUER_ID`
+- `APP_STORE_CONNECT_API_KEY_P8_BASE64`
+
+Optional: set `RELEASE_PLEASE_TOKEN` to a classic PAT or GitHub App token with
+repository contents and pull request permissions if Release Please-created PRs
+must trigger additional workflows. Without it, the workflow falls back to
+`GITHUB_TOKEN`.
+
 ## Using The App
 
 1. Turn on a toio Core Cube.

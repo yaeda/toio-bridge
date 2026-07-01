@@ -1,0 +1,173 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  release-please:
+    name: Create release PR or GitHub Release
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      sha: ${{ steps.release.outputs.sha }}
+    steps:
+      - name: Run Release Please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  release-build:
+    name: Build signed release asset
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: macos-26
+    permissions:
+      contents: write
+    env:
+      APP_NAME: ToioBridge
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+      CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
+      CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      VERSION: ${{ needs.release-please.outputs.version }}
+      TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ needs.release-please.outputs.sha }}
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Validate release secrets
+        run: |
+          missing=0
+          for name in \
+            APPLE_TEAM_ID \
+            APP_STORE_CONNECT_API_ISSUER_ID \
+            APP_STORE_CONNECT_API_KEY_ID \
+            APP_STORE_CONNECT_API_KEY_P8_BASE64 \
+            CERTIFICATE_BASE64 \
+            CERTIFICATE_PASSWORD \
+            KEYCHAIN_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is required"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Import Developer ID certificate
+        run: |
+          certificate_path="$RUNNER_TEMP/developer-id-application.p12"
+          keychain_path="$RUNNER_TEMP/release-signing.keychain-db"
+
+          echo -n "$CERTIFICATE_BASE64" | base64 --decode -o "$certificate_path"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          security find-identity -v -p codesigning "$keychain_path"
+
+      - name: Archive app
+        run: |
+          archive_path="$RUNNER_TEMP/$APP_NAME.xcarchive"
+          xcodebuild archive \
+            -project ToioBridge.xcodeproj \
+            -scheme ToioBridge \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -archivePath "$archive_path" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY='Developer ID Application' \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+
+      - name: Export Developer ID app
+        run: |
+          archive_path="$RUNNER_TEMP/$APP_NAME.xcarchive"
+          export_path="$RUNNER_TEMP/export"
+          export_options_path="$RUNNER_TEMP/ExportOptions.plist"
+
+          /usr/libexec/PlistBuddy -c 'Add :method string developer-id' "$export_options_path"
+          /usr/libexec/PlistBuddy -c "Add :teamID string $APPLE_TEAM_ID" "$export_options_path"
+          /usr/libexec/PlistBuddy -c 'Add :signingStyle string manual' "$export_options_path"
+          /usr/libexec/PlistBuddy -c 'Add :signingCertificate string Developer ID Application' "$export_options_path"
+          /usr/libexec/PlistBuddy -c 'Add :stripSwiftSymbols bool true' "$export_options_path"
+
+          xcodebuild -exportArchive \
+            -archivePath "$archive_path" \
+            -exportPath "$export_path" \
+            -exportOptionsPlist "$export_options_path"
+
+      - name: Create dmg
+        run: |
+          export_path="$RUNNER_TEMP/export"
+          dmg_root="$RUNNER_TEMP/dmg-root"
+          dmg_path="$RUNNER_TEMP/$APP_NAME-$TAG_NAME.dmg"
+
+          mkdir -p "$dmg_root"
+          cp -R "$export_path/$APP_NAME.app" "$dmg_root/"
+          hdiutil create \
+            -volname "$APP_NAME $VERSION" \
+            -srcfolder "$dmg_root" \
+            -ov \
+            -format UDZO \
+            "$dmg_path"
+
+      - name: Notarize and staple dmg
+        run: |
+          api_key_path="$RUNNER_TEMP/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8"
+          dmg_path="$RUNNER_TEMP/$APP_NAME-$TAG_NAME.dmg"
+
+          echo -n "$APP_STORE_CONNECT_API_KEY_P8_BASE64" | base64 --decode -o "$api_key_path"
+
+          xcrun notarytool submit "$dmg_path" \
+            --key "$api_key_path" \
+            --key-id "$APP_STORE_CONNECT_API_KEY_ID" \
+            --issuer "$APP_STORE_CONNECT_API_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "$dmg_path"
+          xcrun stapler validate "$dmg_path"
+
+      - name: Verify signatures
+        run: |
+          app_path="$RUNNER_TEMP/export/$APP_NAME.app"
+          dmg_path="$RUNNER_TEMP/$APP_NAME-$TAG_NAME.dmg"
+
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          spctl --assess --type open --verbose=4 "$dmg_path"
+
+      - name: Upload release asset
+        run: gh release upload "$TAG_NAME" "$RUNNER_TEMP/$APP_NAME-$TAG_NAME.dmg" --clobber
+
+      - name: Publish GitHub Release
+        run: gh release edit "$TAG_NAME" --draft=false
